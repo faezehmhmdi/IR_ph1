@@ -15,7 +15,6 @@ class Index:
         self.punctuations = ['!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<',
                              '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~', '،', '؟', "!?", "»",
                              "«", "؛"]
-        print(self.punctuations)
 
     """
     Reads the document by Pandas and updates the index
@@ -38,8 +37,13 @@ class Index:
                 term = str.replace(term, punc, "")
             if '\u200c' in term:
                 considered = False
-                word, considered = self.remove_plural_signs(word, considered)
-
+                term, considered = self.remove_plural_signs(term, considered)
+                term, considered = self.remove_comparative_superlative_signs(term, considered)
+                term, considered = self.remove_continuous_verb_signs(term, considered)
+                term, considered = self.remove_prefixes(term, considered)
+                term, considered = self.remove_postfixes(term, considered)
+            document.append(term)
+        print(document)
     """
     1. Removes numbers
     """
@@ -62,7 +66,7 @@ class Index:
             del result[word]
 
     """
-    3. Removes plural "ها" and "های"
+    3. Removes plural signs "ها" and "های"
     """
 
     def remove_plural_signs(self, word, considered):
@@ -73,7 +77,64 @@ class Index:
             considered = True
             return split_word[0], considered
         else:
-            return (split_word[0] + '\u200c' + split_word[1]), considered
+            return split_word[0] + '\u200c' + split_word[1], considered
+
+    """
+    4. Removes comparative and superlative signs
+    """
+
+    def remove_comparative_superlative_signs(self, word, considered):
+        if considered:
+            return word, considered
+        split_word = word.split('\u200c')
+        if split_word[1] == 'تر' or split_word[1] == 'ترین':
+            considered = True
+            return split_word[0], considered
+        else:
+            return split_word[0] + '\u200c' + split_word[1], considered
+
+    """
+    5. Removes prefixes
+    """
+
+    def remove_prefixes(self, word, considered):
+        if considered:
+            return word, considered
+        split_word = word.split('\u200c')
+        if split_word[0] in self.prefixes:
+            considered = True
+            return split_word[1], considered
+        else:
+            return split_word[0] + '\u200c' + split_word[1], considered
+
+    """
+    6. Removes postfixes
+    """
+
+    def remove_postfixes(self, word, considered):
+        if considered:
+            return word, considered
+        split_word = word.split('\u200c')
+        if split_word[1] in self.postfixes:
+            considered = True
+            return split_word[0], considered
+        else:
+            return split_word[0] + '\u200c' + split_word[1], considered
+
+    """
+    7. Removes continuous verb signs
+    """
+
+    def remove_continuous_verb_signs(self, word, considered):
+        if considered:
+            return word, considered
+        split_word = word.split('\u200c')
+        if split_word[0] == 'می' or split_word[0] == 'نمی':
+            result = re.sub('((ند)|(ید)|(یم)|(د)|(ی)|(م))$', '', split_word[1])
+            considered = True
+            return result, considered
+        else:
+            return split_word[0] + '\u200c' + split_word[1], considered
 
     """
     Sorts the dictionary
