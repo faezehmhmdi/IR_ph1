@@ -3,6 +3,7 @@ import re
 import string
 import pandas as pd
 import numbers
+from unidecode import unidecode
 
 
 class Index:
@@ -13,8 +14,10 @@ class Index:
         self.prefixes = ["پیش", "ریز", "خوش", "نا"]
         self.postfixes = ["نژاد", "اش", "گذاری", "کننده", "گر", "گری", "زار", "آگین", "مند", "ای"]
         self.punctuations = ['!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<',
-                             '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~', '،', '؟', "!?", "»",
-                             "«", "؛"]
+                             '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~', '،', '؟', '!?', '»',
+                             '«', '؛']
+        self.persian_nums = ['۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹', '۰', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨',
+                             '٩', '٠']
 
     """
     Reads the document by Pandas and updates the index
@@ -22,9 +25,21 @@ class Index:
 
     def handle_document(self):
         data = pd.read_excel(r'.\data.xlsx', sheet_name='Sheet1')
-        # for doc in data['content']:
-        #     self.make_document_ready(doc)
-        self.make_document_ready(data['content'][0])
+        data2 = data.to_dict(orient="index")
+        for i in range(len(data2)):
+            new_data = self.make_document_ready(data2[i]['content'])
+            for pos, term in enumerate(new_data):
+                if term not in self.dictionary.keys():
+                    self.dictionary[term] = dict()
+                    self.dictionary[term]['freq'] = 0
+                if data2[i]['id'] not in self.dictionary[term].keys():
+                    self.dictionary[term][data2[i]['id']] = []
+                self.update_dictionary(data2[i]['id'], term, pos)
+
+        self.remove_most_repeated_words(self.dictionary)
+        self.numbers(self.dictionary)
+        self.sort_dict()
+        print(self.dictionary)
 
     """
     Removes punctuations, numbers, prefixes and postfixes from document
@@ -34,36 +49,40 @@ class Index:
         document = []
         for term in doc.split():
             for punc in self.punctuations:
-                term = str.replace(term, punc, "")
+                term = str.replace(term, punc, '')
+            for num in self.persian_nums:
+                if num in term:
+                    term = str.replace(term, num, unidecode(num))
             if '\u200c' in term:
                 considered = False
                 term, considered = self.remove_plural_signs(term, considered)
-                term, considered = self.remove_comparative_superlative_signs(term, considered)
                 term, considered = self.remove_continuous_verb_signs(term, considered)
+                term, considered = self.remove_comparative_superlative_signs(term, considered)
                 term, considered = self.remove_prefixes(term, considered)
                 term, considered = self.remove_postfixes(term, considered)
             document.append(term)
-        print(document)
+        return document
+
     """
-    1. Removes numbers
+    1. Numbers
     """
 
-    @staticmethod
-    def remove_numbers(dictionary):
-        for item in dictionary.copy().keys():
-            if isinstance(item, numbers.Number):
-                del dictionary[item]
+    def numbers(self, dictionary: dict):
+        for item in dictionary.keys():
+            for num in self.persian_nums:
+                if num in item:
+                    item = str.replace(item, num, unidecode(num))
 
     """
     2. Removes most repeated words
     """
 
-    def remove_most_repeated_words(self, dictionary):
+    def remove_most_repeated_words(self, dictionary: dict):
         result = sorted(dictionary.copy().items(), key=lambda item: item[1]['freq'])
         for i in range(10):
             word = result.pop()[0]
             self.most_repeated_words.append(word)
-            del result[word]
+            del dictionary[word]
 
     """
     3. Removes plural signs "ها" and "های"
@@ -140,5 +159,10 @@ class Index:
     Sorts the dictionary
     """
 
-    def sort_dict(self, dictionary):
+    def sort_dict(self):
         self.dictionary = collections.OrderedDict(sorted(self.dictionary.items()))
+
+    def update_dictionary(self, id, term, pos):
+        self.dictionary[term][id].append(pos)
+        self.dictionary[term]['freq'] += 1
+        pass
