@@ -1,9 +1,14 @@
+import ast
 import collections
+import hashlib
+import itertools
 import re
 import string
 import pandas as pd
 import numbers
 from unidecode import unidecode
+
+import database
 
 
 class Index:
@@ -96,7 +101,7 @@ class Index:
             considered = True
             return split_word[0], considered
         else:
-            return split_word[0] + '\u200c' + split_word[1], considered
+            return (split_word[0] + '\u200c' + split_word[1]), considered
 
     """
     4. Removes comparative and superlative signs
@@ -110,7 +115,7 @@ class Index:
             considered = True
             return split_word[0], considered
         else:
-            return split_word[0] + '\u200c' + split_word[1], considered
+            return (split_word[0] + '\u200c' + split_word[1]), considered
 
     """
     5. Removes prefixes
@@ -124,7 +129,7 @@ class Index:
             considered = True
             return split_word[1], considered
         else:
-            return split_word[0] + '\u200c' + split_word[1], considered
+            return (split_word[0] + '\u200c' + split_word[1]), considered
 
     """
     6. Removes postfixes
@@ -138,7 +143,7 @@ class Index:
             considered = True
             return split_word[0], considered
         else:
-            return split_word[0] + '\u200c' + split_word[1], considered
+            return (split_word[0] + '\u200c' + split_word[1]), considered
 
     """
     7. Removes continuous verb signs
@@ -153,7 +158,7 @@ class Index:
             considered = True
             return result, considered
         else:
-            return split_word[0] + '\u200c' + split_word[1], considered
+            return (split_word[0] + '\u200c' + split_word[1]), considered
 
     """
     Sorts the dictionary
@@ -162,7 +167,116 @@ class Index:
     def sort_dict(self):
         self.dictionary = collections.OrderedDict(sorted(self.dictionary.items()))
 
+    """
+    Updates the dictionary
+    """
+
     def update_dictionary(self, id, term, pos):
         self.dictionary[term][id].append(pos)
         self.dictionary[term]['freq'] += 1
         pass
+
+    """
+    """
+
+    def find_in_query(self, query):
+        query2 = []
+        commons = self.db.get("Commons")
+        commons = commons.decode(encoding="utf-8")
+        commons = ast.literal_eval(commons)
+        for word in query.split():
+            for char in self.punc_chars:
+                word = str.replace(word, char, "")
+            if word not in commons and (not (str(word).isnumeric())):
+                if '\u200c' in word:
+                    reduced = False
+                    print(f" original word : {word}")
+                    word, reduced = self.remove_plural_signs(word, reduced)
+                    # print(word, reduced)
+                    word, reduced = self.remove_continuous_verb_signs(word, reduced)
+                    word, reduced = self.remove_comparative_superlative_signs(word, reduced)
+                    word, reduced = self.remove_prefixes(word, reduced)
+                    word, reduced = self.remove_postfixes(word, reduced)
+                    print(f" reduced word : {word}")
+                    print("---------")
+                query2.append(word)
+
+        doc_id_list = []
+        # print(clean_query)
+        query_sub_list = []
+        for i in range(len(query2), 0, -1):
+            temp = self.findsubsets(query2, i)
+            query_sub_list.append(temp)
+
+        doc_ids_dict = {}
+        assert isinstance(self.db, database)
+        for sub_lists in query_sub_list:
+            for sub_list in sub_lists:
+                # print(sub_list)
+                doc_id_list.clear()
+                for c_word in sub_list:
+                    # print(sub_list)
+                    # print(c_word)
+                    match = self.db.get(str(hashlib.sha1(c_word.encode()).hexdigest()))
+                    if match is None:
+                        # print(c_word)
+                        # print("Word not found!")
+                        lst = []
+                        doc_id_list = lst
+                        # print("break")
+                        break
+                    match = match.decode(encoding="utf-8")
+                    res = ast.literal_eval(match)
+                    # print(res)
+                    lst = []
+                    i = 0
+                    for ids in res:
+                        if i == 0:
+                            i += 1
+                            continue
+                        else:
+                            lst.append(ids[0])
+                    doc_id_list.append(lst)
+                doc_ids_dict[sub_list] = doc_id_list.copy()
+        # print(doc_ids_dict)
+
+        results = {}
+
+        for key in doc_ids_dict.keys():
+            result = []
+            tmp = {}
+            if not doc_ids_dict[key]:
+                results[key] = []
+            else:
+                # print(key)
+                # print(doc_ids_dict[key])
+                if len(doc_ids_dict[key]) == 1:
+                    # print(key)
+                    for r in doc_ids_dict[key]:
+                        # print(r)
+                        result.append(r)
+                else:
+                    for r in doc_ids_dict[key]:
+                        # print(key)
+                        # print(r)
+                        for t in r:
+                            if t not in tmp.keys():
+                                # print(t)
+                                tmp[t] = 1
+                            else:
+                                tmp[t] += 1
+                    # print(key)
+                    # print(len(doc_ids_dict[key]))
+                    for value in tmp.keys():
+                        # print(value, tmp[value])
+                        if tmp[value] == len(doc_ids_dict[key]):
+                            result.append(value)
+                    # print(result)
+                    # print()
+                    # print("---")
+                results[key] = result.copy()
+        # print(results)
+        return results
+
+    def findsubsets(self, s, n):
+        return list(itertools.combinations(s, n))
